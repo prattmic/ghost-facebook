@@ -1,21 +1,23 @@
-# 1. Use Ghost API (requires authentication) to get post contents
-#    https://github.com/TryGhost/Ghost/wiki/%5BWIP%5D-API-Documentation
-
-# 2. Convert post content from Markdown to HTML
-
-# 3. Extract images from HTML (with BeautifulSoup)
-
-# 4. Post images to FB using Python SDK
-#    https://github.com/pythonforfacebook/facebook-sdk
-
 import argparse
 from bs4 import BeautifulSoup
+import facebook
+from flask import Flask, request
 from ghostblog import Ghost, GhostError
+import logging
+import requests
 
 try: # Python 3
-    from urllib.parse import urlparse, urlunparse
-except ImportError:
+    from io import BytesIO
+    from urllib.parse import urlencode, urlparse, urlunparse
+except ImportError: # Python 3
+    from urllib import urlencode
     from urlparse import urlparse, urlunparse
+    from cStringIO import StringIO as BytesIO
+
+APP_ID = '756432811108370'
+APP_SECRET = '0b4b2cb295a2fa539dcb1e50587c7c14'
+
+flask_app = Flask(__name__)
 
 def download_post(url, username, password, post_id=None):
     """
@@ -67,6 +69,46 @@ def find_local_images(html, base_uri):
 
     return uris
 
+code = None
+
+def shutdown_flask():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+
+@flask_app.route('/ghost-facebook/')
+def oauth_callback():
+    global code
+    code = request.args.get('code', '')
+    shutdown_flask()
+    return 'Success'
+
+def facebook_access_token(app_id=APP_ID, app_secret=APP_SECRET):
+    redirect_uri = 'http://localhost:3000/ghost-facebook/'
+
+    params = {
+        'app_id': app_id,
+        'redirect_uri': redirect_uri,
+        # Access and post photos
+        'scope': 'user_photos,publish_actions'
+    }
+
+    oauth_url = 'https://www.facebook.com/dialog/oauth?%s' % urlencode(params)
+    print("Please direct your browser to: %s" % oauth_url)
+
+    flask_app.run(port=3000)
+    logging.debug('Got code: %s' % code)
+
+    return facebook.get_access_token_from_code(code, redirect_uri,
+                                               app_id, app_secret)
+
+def upload_to_facebook(fb, uri):
+    image = requests.get(uri)
+    image = BytesIO(image.content)
+
+    fb.put_photo(image)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Post images from Ghost blog to Facebook')
     parser.add_argument('ghost_url', help='URL of Ghost blog to extract images from')
@@ -75,12 +117,23 @@ if __name__ == "__main__":
     parser.add_argument('--post-id', '-i', type=int, default=None,
                         help='''ID of post to extract from.  By default,
                                 the latest post is used.''')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
 
     args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
 
     post = download_post(args.ghost_url, args.ghost_username,
                          args.ghost_password, args.post_id)
 
     imgs = find_local_images(post['html'], args.ghost_url)
 
-    print(imgs)
+    logging.debug("Images: %s" % imgs)
+
+    token = facebook_access_token()
+
+    fb = facebook.GraphAPI(token['access_token'])
+
+    for img in imgs:
+        upload_to_facebook(fb, img)

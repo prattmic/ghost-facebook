@@ -1,2 +1,5 @@
 git+https://github.com/prattmic/ghostblog
 beautifulsoup4
+facebook-sdk
+flask
+requests
