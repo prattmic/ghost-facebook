@@ -10,10 +10,10 @@ import sys
 
 try: # Python 3
     from io import BytesIO
-    from urllib.parse import urlencode, urlparse, urlunparse
+    from urllib.parse import urlencode, urljoin, urlparse, urlunparse
 except ImportError: # Python 2
     from urllib import urlencode
-    from urlparse import urlparse, urlunparse
+    from urlparse import urljoin, urlparse, urlunparse
     from cStringIO import StringIO as BytesIO
 
 # Make input behave as in Python 3
@@ -22,6 +22,8 @@ if sys.version_info.major == 2:
 
 APP_ID = '756432811108370'
 APP_SECRET = '0b4b2cb295a2fa539dcb1e50587c7c14'
+
+FLASK_PORT = 5000   # Flask listening port
 
 # Facebook authentication flow:
 
@@ -58,8 +60,8 @@ def oauth_callback():
     shutdown_flask()
     return 'Success'
 
-def facebook_access_token(app_id=APP_ID, app_secret=APP_SECRET):
-    redirect_uri = 'http://localhost:3000/ghost-facebook/'
+def facebook_access_token(domain, app_id=APP_ID, app_secret=APP_SECRET):
+    redirect_uri = urljoin(domain, '/ghost-facebook/')
 
     params = {
         'app_id': app_id,
@@ -71,7 +73,7 @@ def facebook_access_token(app_id=APP_ID, app_secret=APP_SECRET):
     oauth_url = 'https://www.facebook.com/dialog/oauth?%s' % urlencode(params)
     print("Please direct your browser to: %s" % oauth_url)
 
-    flask_app.run(port=3000)
+    flask_app.run(port=FLASK_PORT)
     logging.debug('Got code: %s' % code)
 
     return facebook.get_access_token_from_code(code, redirect_uri,
@@ -144,6 +146,9 @@ if __name__ == "__main__":
     parser.add_argument('--post-id', '-i', type=int, default=None,
                         help='''ID of post to extract from.  By default,
                                 the latest post is used.''')
+    parser.add_argument('--domain', '-d', default='http://localhost:%d' % FLASK_PORT,
+                        help='''Base domain of local server, passed to Facebook
+                                in redirect URI.''')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
 
     args = parser.parse_args()
@@ -165,7 +170,7 @@ if __name__ == "__main__":
         print('Aborting')
         exit(1)
 
-    token = facebook_access_token()
+    token = facebook_access_token(args.domain)
 
     fb = facebook.GraphAPI(token['access_token'])
 
