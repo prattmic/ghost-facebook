@@ -80,7 +80,7 @@ def upload_to_facebook(fb, uri):
 
     fb.put_photo(image)
 
-def download_post(url, username, password, post_id=None):
+def ghost_download_post(url, username, password, post_id=None):
     """
     Get post id from Ghost blog.
 
@@ -145,8 +145,8 @@ if __name__ == "__main__":
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
 
-    post = download_post(args.ghost_url, args.ghost_username,
-                         args.ghost_password, args.post_id)
+    post = ghost_download_post(args.ghost_url, args.ghost_username,
+                               args.ghost_password, args.post_id)
 
     imgs = find_local_images(post['html'], args.ghost_url)
 
