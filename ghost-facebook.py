@@ -1,3 +1,4 @@
+from __future__ import print_function
 import argparse
 from bs4 import BeautifulSoup
 import facebook
@@ -5,6 +6,7 @@ from flask import Flask, request
 from ghostblog import Ghost, GhostError
 import logging
 import requests
+import sys
 
 try: # Python 3
     from io import BytesIO
@@ -13,6 +15,10 @@ except ImportError: # Python 2
     from urllib import urlencode
     from urlparse import urlparse, urlunparse
     from cStringIO import StringIO as BytesIO
+
+# Make input behave as in Python 3
+if sys.version_info.major == 2:
+    input = raw_input
 
 APP_ID = '756432811108370'
 APP_SECRET = '0b4b2cb295a2fa539dcb1e50587c7c14'
@@ -150,11 +156,20 @@ if __name__ == "__main__":
 
     imgs = find_local_images(post['html'], args.ghost_url)
 
-    logging.debug("Images: %s" % imgs)
+    print('Images to upload:')
+    for img in imgs:
+        print('\t* %s' % img)
+
+    cont = input('Continue? (y/N)')
+    if cont != 'y':
+        print('Aborting')
+        exit(1)
 
     token = facebook_access_token()
 
     fb = facebook.GraphAPI(token['access_token'])
 
     for img in imgs:
+        print('Uploading %s ...' % img, end='')
         upload_to_facebook(fb, img)
+        print('Done.')
