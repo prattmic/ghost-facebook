@@ -9,7 +9,7 @@ import requests
 try: # Python 3
     from io import BytesIO
     from urllib.parse import urlencode, urlparse, urlunparse
-except ImportError: # Python 3
+except ImportError: # Python 2
     from urllib import urlencode
     from urlparse import urlparse, urlunparse
     from cStringIO import StringIO as BytesIO
