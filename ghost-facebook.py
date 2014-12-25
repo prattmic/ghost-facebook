@@ -17,7 +17,68 @@ except ImportError: # Python 3
 APP_ID = '756432811108370'
 APP_SECRET = '0b4b2cb295a2fa539dcb1e50587c7c14'
 
+# Facebook authentication flow:
+
+# 1. User browses to /dialog/oauth, which has additional app ID and redirect
+#    parameters
+# 2. The user approves the app, and is redirected to the provided redirect URL
+# 3. The Flask app listens on the redirect URL.  The request contains a special
+#    code from Facebook.
+# 4. The server (this application), uses the code to request an access token
+#    from Facebook.
+# 5. All further requests use the access token for authentication.
+
+# Temporary web server to receive code from Facebook
+#
+# With Flask, there is no way to listen for one request, so when the user is
+# pointed to FB, the Flask server is started, listening for the redirect
+# callback.  When the callback is received, the code is retrieved and placed in
+# the global.  The server is then shutdown, allowing the main application flow
+# to continue.
+
 flask_app = Flask(__name__)
+code = None
+
+def shutdown_flask():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+
+@flask_app.route('/ghost-facebook/')
+def oauth_callback():
+    global code
+    code = request.args.get('code', '')
+    shutdown_flask()
+    return 'Success'
+
+def facebook_access_token(app_id=APP_ID, app_secret=APP_SECRET):
+    redirect_uri = 'http://localhost:3000/ghost-facebook/'
+
+    params = {
+        'app_id': app_id,
+        'redirect_uri': redirect_uri,
+        # Access and post photos permissions
+        'scope': 'user_photos,publish_actions'
+    }
+
+    oauth_url = 'https://www.facebook.com/dialog/oauth?%s' % urlencode(params)
+    print("Please direct your browser to: %s" % oauth_url)
+
+    flask_app.run(port=3000)
+    logging.debug('Got code: %s' % code)
+
+    return facebook.get_access_token_from_code(code, redirect_uri,
+                                               app_id, app_secret)
+
+def upload_to_facebook(fb, uri):
+    """
+    Download image from URI and upload it to FB.
+    """
+    image = requests.get(uri)
+    image = BytesIO(image.content)
+
+    fb.put_photo(image)
 
 def download_post(url, username, password, post_id=None):
     """
@@ -68,46 +129,6 @@ def find_local_images(html, base_uri):
         uris.append(urlunparse(uri))
 
     return uris
-
-code = None
-
-def shutdown_flask():
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func is None:
-        raise RuntimeError('Not running with the Werkzeug Server')
-    func()
-
-@flask_app.route('/ghost-facebook/')
-def oauth_callback():
-    global code
-    code = request.args.get('code', '')
-    shutdown_flask()
-    return 'Success'
-
-def facebook_access_token(app_id=APP_ID, app_secret=APP_SECRET):
-    redirect_uri = 'http://localhost:3000/ghost-facebook/'
-
-    params = {
-        'app_id': app_id,
-        'redirect_uri': redirect_uri,
-        # Access and post photos
-        'scope': 'user_photos,publish_actions'
-    }
-
-    oauth_url = 'https://www.facebook.com/dialog/oauth?%s' % urlencode(params)
-    print("Please direct your browser to: %s" % oauth_url)
-
-    flask_app.run(port=3000)
-    logging.debug('Got code: %s' % code)
-
-    return facebook.get_access_token_from_code(code, redirect_uri,
-                                               app_id, app_secret)
-
-def upload_to_facebook(fb, uri):
-    image = requests.get(uri)
-    image = BytesIO(image.content)
-
-    fb.put_photo(image)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Post images from Ghost blog to Facebook')
