@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 import facebook
 from flask import Flask, request
 from ghostblog import Ghost, GhostError
+import json
 import logging
 import requests
 import sys
@@ -19,9 +20,6 @@ except ImportError: # Python 2
 # Make input behave as in Python 3
 if sys.version_info.major == 2:
     input = raw_input
-
-APP_ID = '756432811108370'
-APP_SECRET = '0b4b2cb295a2fa539dcb1e50587c7c14'
 
 FLASK_PORT = 5000   # Flask listening port
 
@@ -60,7 +58,7 @@ def oauth_callback():
     shutdown_flask()
     return 'Success'
 
-def facebook_access_token(domain, app_id=APP_ID, app_secret=APP_SECRET):
+def facebook_access_token(domain, app_id, app_secret):
     redirect_uri = urljoin(domain, '/ghost-facebook/')
 
     params = {
@@ -146,15 +144,40 @@ if __name__ == "__main__":
     parser.add_argument('--post-id', '-i', type=int, default=None,
                         help='''ID of post to extract from.  By default,
                                 the latest post is used.''')
+    parser.add_argument('--app-id', help='Facebook app id')
+    parser.add_argument('--app-secret', help='Facebook app secret')
     parser.add_argument('--domain', '-d', default='http://localhost:%d' % FLASK_PORT,
                         help='''Base domain of local server, passed to Facebook
                                 in redirect URI.''')
+    parser.add_argument('--config', '-c', default='config.json',
+                        help='''JSON file with "app_id" and "app_secret"
+                                properties.''')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
 
     args = parser.parse_args()
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
+
+    config = {}
+
+    # First, try to load config from a file
+    try:
+        config = json.load(open(args.config))
+    except IOError:
+        pass
+
+    # Then, use command-line options
+    if args.app_id:
+        config['app_id'] = args.app_id
+    if args.app_secret:
+        config['app_secret'] = args.app_secret
+
+    # Make sure app_id and app_secret have been set from either the file or
+    # command line
+    if 'app_id' not in config or 'app_secret' not in config:
+        raise KeyError('Missing app id and/or app secret. ' \
+                       'Either pass as arguments, or create config.json.')
 
     post = ghost_download_post(args.ghost_url, args.ghost_username,
                                args.ghost_password, args.post_id)
@@ -170,7 +193,8 @@ if __name__ == "__main__":
         print('Aborting')
         exit(1)
 
-    token = facebook_access_token(args.domain)
+    token = facebook_access_token(args.domain, config['app_id'],
+                                  config['app_secret'])
 
     fb = facebook.GraphAPI(token['access_token'])
 
