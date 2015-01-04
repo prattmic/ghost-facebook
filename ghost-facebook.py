@@ -77,14 +77,14 @@ def facebook_access_token(domain, app_id, app_secret):
     return facebook.get_access_token_from_code(code, redirect_uri,
                                                app_id, app_secret)
 
-def upload_to_facebook(fb, uri):
+def upload_to_facebook(fb, uri, album):
     """
     Download image from URI and upload it to FB.
     """
     image = requests.get(uri)
     image = BytesIO(image.content)
 
-    fb.put_photo(image)
+    fb.put_photo(image, album_id=album)
 
 def ghost_download_post(url, username, password, post_id=None):
     """
@@ -193,6 +193,7 @@ if __name__ == "__main__":
     parser.add_argument('--domain', '-d', default=None,
                         help='''Base domain of local server, passed to Facebook
                                 in redirect URI.''')
+    parser.add_argument('--album-id', help='Facebook photo album to post photos to')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
     parser.add_argument('--config', '-c', default='config.json',
                         help='JSON file with default values for each argument.')
@@ -226,5 +227,5 @@ if __name__ == "__main__":
 
     for img in imgs:
         print('Uploading %s ...' % img, end='')
-        upload_to_facebook(fb, img)
+        upload_to_facebook(fb, img, config['album_id'])
         print('Done.')
