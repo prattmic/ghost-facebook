@@ -215,7 +215,7 @@ if __name__ == "__main__":
     for img in imgs:
         print('\t* %s' % img)
 
-    cont = input('Continue? (y/N)')
+    cont = input('Continue? (y/N) ')
     if cont != 'y':
         print('Aborting')
         exit(1)
@@ -228,4 +228,4 @@ if __name__ == "__main__":
     for img in imgs:
         print('Uploading %s ...' % img, end='')
         upload_to_facebook(fb, img, config['album_id'])
-        print('Done.')
+        print(' Done.')
