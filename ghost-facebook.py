@@ -136,53 +136,79 @@ def find_local_images(html, base_uri):
 
     return uris
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Post images from Ghost blog to Facebook')
-    parser.add_argument('ghost_url', help='URL of Ghost blog to extract images from')
-    parser.add_argument('ghost_username', help='Username of Ghost user')
-    parser.add_argument('ghost_password', help='Password of Ghost user')
-    parser.add_argument('--post-id', '-i', type=int, default=None,
-                        help='''ID of post to extract from.  By default,
-                                the latest post is used.''')
-    parser.add_argument('--app-id', help='Facebook app id')
-    parser.add_argument('--app-secret', help='Facebook app secret')
-    parser.add_argument('--domain', '-d', default='http://localhost:%d' % FLASK_PORT,
-                        help='''Base domain of local server, passed to Facebook
-                                in redirect URI.''')
-    parser.add_argument('--config', '-c', default='config.json',
-                        help='''JSON file with "app_id" and "app_secret"
-                                properties.''')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
+class MissingArgumentError(Exception):
+    def __init__(self, argument, *args, **kwargs):
+        message = 'Missing %s; pass as argument, or in config.json.' \
+                    % (argument,)
+        super(MissingArgumentError, self).__init__(message, *args, **kwargs)
 
-    args = parser.parse_args()
-
-    if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
+def process_config(args):
+    """
+    Read config from the config file and the command line, returning the
+    final configuration.  Command line options override config file options.
+    """
+    # Turn argparse object into a dictionary to make it easier to work with
+    args = vars(args)
 
     config = {}
 
     # First, try to load config from a file
     try:
-        config = json.load(open(args.config))
+        config = json.load(open(args['config']))
     except IOError:
         pass
 
-    # Then, use command-line options
-    if args.app_id:
-        config['app_id'] = args.app_id
-    if args.app_secret:
-        config['app_secret'] = args.app_secret
+    # Then, override with command-line options
+    for key in args:
+        # If key wasn't set by file, add it from the command line
+        # argument, even if the value is None.  This ensures that
+        # the config dictionary will have an entry for all arguments.
+        if args[key] or not key in config:
+            config[key] = args[key]
 
-    # Make sure app_id and app_secret have been set from either the file or
-    # command line
-    if 'app_id' not in config or 'app_secret' not in config:
-        raise KeyError('Missing app id and/or app secret. ' \
-                       'Either pass as arguments, or create config.json.')
+    # If domain is not provided, a default on localhost is used
+    if not config['domain']:
+        config['domain'] = 'http://localhost:%d' % FLASK_PORT
 
-    post = ghost_download_post(args.ghost_url, args.ghost_username,
-                               args.ghost_password, args.post_id)
+    # Make sure required args have been set from the file or command line
+    required_args = ['ghost_url', 'ghost_username', 'ghost_password',
+                     'app_id', 'app_secret']
 
-    imgs = find_local_images(post['html'], args.ghost_url)
+    for arg in required_args:
+        if arg not in config or not config[arg]:
+            raise MissingArgumentError(arg)
+
+    return config
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Post images from Ghost blog to Facebook')
+    parser.add_argument('--ghost-url', help='URL of Ghost blog to extract images from')
+    parser.add_argument('--ghost-username', help='Username of Ghost user')
+    parser.add_argument('--ghost-password', help='Password of Ghost user')
+    parser.add_argument('--post-id', '-i', type=int, default=None,
+                        help='''ID of post to extract from.  By default,
+                                the latest post is used.''')
+    parser.add_argument('--app-id', help='Facebook app id')
+    parser.add_argument('--app-secret', help='Facebook app secret')
+    parser.add_argument('--domain', '-d', default=None,
+                        help='''Base domain of local server, passed to Facebook
+                                in redirect URI.''')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
+    parser.add_argument('--config', '-c', default='config.json',
+                        help='JSON file with default values for each argument.')
+
+    args = parser.parse_args()
+    config = process_config(args)
+
+    if config['verbose']:
+        logging.basicConfig(level=logging.DEBUG)
+
+    logging.debug('Configuration: %s' % config)
+
+    post = ghost_download_post(config['ghost_url'], config['ghost_username'],
+                               config['ghost_password'], config['post_id'])
+
+    imgs = find_local_images(post['html'], config['ghost_url'])
 
     print('Images to upload:')
     for img in imgs:
@@ -193,7 +219,7 @@ if __name__ == "__main__":
         print('Aborting')
         exit(1)
 
-    token = facebook_access_token(args.domain, config['app_id'],
+    token = facebook_access_token(config['domain'], config['app_id'],
                                   config['app_secret'])
 
     fb = facebook.GraphAPI(token['access_token'])
