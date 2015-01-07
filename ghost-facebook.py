@@ -1,6 +1,7 @@
 from __future__ import print_function
 import argparse
 from bs4 import BeautifulSoup
+import exifread
 import facebook
 from flask import Flask, request
 from ghostblog import Ghost, GhostError
@@ -84,7 +85,14 @@ def upload_to_facebook(fb, uri, album):
     image = requests.get(uri)
     image = BytesIO(image.content)
 
-    fb.put_photo(image, album_id=album)
+    tags = exifread.process_file(image)
+
+    if 'Image ImageDescription' in tags:
+        description = tags['Image ImageDescription'].values
+    else:
+        description = ''
+
+    fb.put_photo(image, album_id=album, message=description)
 
 def ghost_download_post(url, username, password, post_id=None):
     """
