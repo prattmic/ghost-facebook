@@ -78,7 +78,7 @@ def facebook_access_token(domain, app_id, app_secret):
     return facebook.get_access_token_from_code(code, redirect_uri,
                                                app_id, app_secret)
 
-def upload_to_facebook(fb, uri, album):
+def upload_to_facebook(fb, uri, album, post_url):
     """
     Download image from URI and upload it to FB.
     """
@@ -89,11 +89,14 @@ def upload_to_facebook(fb, uri, album):
 
     if 'Image ImageDescription' in tags:
         description = tags['Image ImageDescription'].values
+        description += '\n\n'
     else:
         description = ''
 
     # Image must be reread from beginning for upload
     image.seek(0)
+
+    description += post_url
 
     fb.put_photo(image, album_id=album, message=description)
 
@@ -111,6 +114,21 @@ def ghost_download_post(url, username, password, post_id=None):
 
     # First result is either the requested post ID, or the latest post
     return posts['posts'][0]
+
+def ghost_post_url(ghost_url, post):
+    """
+    Absolute web address of Ghost post.
+    """
+    # Base URL should be an absolute folder
+    if not ghost_url.endswith('/'):
+        ghost_url += '/'
+
+    # Post URL should be relative
+    post_url = post['url']
+    if post_url.startswith('/'):
+        post_url = post_url[1:]
+
+    return urljoin(ghost_url, post_url)
 
 def find_local_images(html, base_uri):
     """
@@ -220,6 +238,9 @@ if __name__ == "__main__":
     post = ghost_download_post(config['ghost_url'], config['ghost_username'],
                                config['ghost_password'], config['post_id'])
 
+    post_url = ghost_post_url(config['ghost_url'], post)
+    print('Post: %s' % post_url)
+
     imgs = find_local_images(post['html'], config['ghost_url'])
 
     print('Images to upload:')
@@ -238,5 +259,5 @@ if __name__ == "__main__":
 
     for img in imgs:
         print('Uploading %s ...' % img, end='')
-        upload_to_facebook(fb, img, config['album_id'])
+        upload_to_facebook(fb, img, config['album_id'], post_url)
         print(' Done.')
