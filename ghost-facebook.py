@@ -92,6 +92,9 @@ def upload_to_facebook(fb, uri, album):
     else:
         description = ''
 
+    # Image must be reread from beginning for upload
+    image.seek(0)
+
     fb.put_photo(image, album_id=album, message=description)
 
 def ghost_download_post(url, username, password, post_id=None):
